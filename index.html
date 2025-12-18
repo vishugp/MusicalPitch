@@ -3,6 +3,7 @@
 	<head>
 		<title>Pitch Detector - Indian Classical Music</title>
 		<link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap' rel='stylesheet'>
+		<script src="https://surikov.github.io/webaudiofontdata/npm/dist/WebAudioFontPlayer.js"></script>
 		<style>
 			* {
 				margin: 0;
@@ -251,7 +252,7 @@
 						<button class="btn-secondary" onclick="document.getElementById('audio_file_input').click();">🎵 Load Audio File</button>
 						<input type="file" id="audio_file_input" accept="audio/*" style="display: none;" onchange="handleAudioFileSelect(event)">
 						<button class="btn-secondary" id="play_audio_btn" onclick="togglePlayback()" disabled>▶️ Play Audio</button>
-						<button class="btn-secondary" onclick="toggleOscillator()">🔊 Shruti Box</button>
+						<button class="btn-secondary" id="shruti_box_btn" onclick="toggleOscillator()">🔊 Shruti Box</button>
 					</div>
 					
 					<div class="sa-frequency-container">

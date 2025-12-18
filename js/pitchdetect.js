@@ -1,3 +1,27 @@
+/*
+The MIT License (MIT)
+
+Copyright (c) 2014 Chris Wilson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 window.AudioContext = window.AudioContext || window.webkitAudioContext;
 
 var audioContext = null;
@@ -7,6 +31,13 @@ var analyser = null;
 var theBuffer = null;
 var DEBUGCANVAS = null;
 var mediaStreamSource = null;
+
+// WebAudioFont setup for Shruti Box (matching CarnaticProject)
+var SOUNDFONT_URL = 'https://surikov.github.io/webaudiofontdata/sound/0460_FluidR3_GM_sf2_file.js';
+var SOUNDFONT_NAME = "_tone_0460_FluidR3_GM_sf2_file";
+var soundFontPlayer = null;
+var soundFontLoaded = false;
+var shrutiBoxInterval = null;
 var detectorElem, 
 	canvasElem,
 	waveCanvas,
@@ -34,7 +65,18 @@ var graphTimeWindow = 10; // Show last 10 seconds
 
 window.onload = function() {
 	audioContext = new AudioContext();
+	if (audioContext.state === 'suspended') audioContext.resume();
 	MAX_SIZE = Math.max(4,Math.floor(audioContext.sampleRate/5000));	// corresponds to a 5kHz signal
+	
+	// Initialize WebAudioFont player
+	if (typeof WebAudioFontPlayer !== 'undefined') {
+		soundFontPlayer = new WebAudioFontPlayer();
+	}
+	
+	// Initialize WebAudioFont player
+	if (typeof WebAudioFontPlayer !== 'undefined') {
+		soundFontPlayer = new WebAudioFontPlayer();
+	}
 
 	detectorElem = document.getElementById( "detector" );
 	canvasElem = document.getElementById( "output" );
@@ -243,52 +285,169 @@ function stopCalibrateSa() {
 }
 
 function toggleOscillator() {
-    if (isPlaying && sourceNode) {
+    // Ensure audio context exists
+    if (!audioContext) {
+        audioContext = new AudioContext();
+    }
+    
+    var shrutiBtn = document.getElementById('shruti_box_btn');
+    
+    // Check if already playing (check both isPlaying flag and sourceNode existence)
+    if (isPlaying) {
         //stop playing and return
-        try {
-            sourceNode.stop(0);
-        } catch(e) {
-            // If stop fails, try disconnect
-            sourceNode.disconnect();
+        // Clear soundfont interval
+        if (shrutiBoxInterval) {
+            clearInterval(shrutiBoxInterval);
+            shrutiBoxInterval = null;
         }
-        sourceNode = null;
+        
+        // Stop oscillator if it exists
+        if (sourceNode) {
+            try {
+                sourceNode.stop(0);
+            } catch(e) {
+                // If stop fails, try disconnect
+                try {
+                    sourceNode.disconnect();
+                } catch(e2) {
+                    console.error("Error stopping oscillator:", e2);
+                }
+            }
+            sourceNode = null;
+        }
+        
         analyser = null;
         isPlaying = false;
 		if (!window.cancelAnimationFrame)
 			window.cancelAnimationFrame = window.webkitCancelAnimationFrame;
-        window.cancelAnimationFrame( rafID );
-        return "play oscillator";
+        if (rafID) {
+            window.cancelAnimationFrame( rafID );
+        }
+        if (shrutiBtn) {
+            shrutiBtn.innerText = "🔊 Shruti Box";
+        }
+        return;
     }
     
-    // Ensure audio context is running
+    // Always try to resume audio context (browsers require user interaction)
+    var resumePromise = Promise.resolve();
     if (audioContext.state === 'suspended') {
-        audioContext.resume();
+        resumePromise = audioContext.resume();
     }
     
-    sourceNode = audioContext.createOscillator();
-    
-    // Set frequency to Sa frequency
-    sourceNode.frequency.value = saFrequency;
-    sourceNode.type = 'sine'; // Use sine wave for cleaner tone
+    resumePromise.then(() => {
+        console.log("Audio context state:", audioContext.state);
+        startOscillator();
+        if (shrutiBtn) {
+            shrutiBtn.innerText = "⏸️ Stop Shruti Box";
+        }
+    }).catch(err => {
+        console.error("Error with audio context:", err);
+        alert("Error starting Shruti Box. Please try clicking the button again.");
+    });
+}
 
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    sourceNode.connect( analyser );
-    analyser.connect( audioContext.destination );
+// Load soundfont for Shruti Box
+async function ensureSoundFontLoaded() {
+    if (!soundFontPlayer || soundFontLoaded) return;
     
+    if (!soundFontPlayer.loader.isLoading) {
+        await new Promise((resolve, reject) => {
+            try {
+                soundFontPlayer.loader.startLoad(audioContext, SOUNDFONT_URL, SOUNDFONT_NAME);
+                soundFontPlayer.loader.waitLoad(() => {
+                    soundFontLoaded = true;
+                    console.log("Soundfont loaded for Shruti Box");
+                    resolve();
+                });
+            } catch(e) {
+                console.error("Error loading soundfont:", e);
+                reject(e);
+            }
+        });
+    }
+}
+
+// Calculate MIDI note from frequency
+function frequencyToMIDI(frequency) {
+    // A4 = 440 Hz = MIDI note 69
+    return Math.round(12 * Math.log2(frequency / 440) + 69);
+}
+
+function startOscillator() {
+    // Try using WebAudioFont first (better quality, like CarnaticProject)
+    if (soundFontPlayer && typeof WebAudioFontPlayer !== 'undefined') {
+        ensureSoundFontLoaded().then(() => {
+            if (!soundFontLoaded) {
+                // Fallback to oscillator if soundfont didn't load
+                startOscillatorFallback();
+                return;
+            }
+            
+            // Play continuous Sa using soundfont (loop every 2 seconds)
+            var midiNote = frequencyToMIDI(saFrequency);
+            console.log("Shruti Box started at", saFrequency, "Hz (MIDI:", midiNote + ")");
+            
+            // Play note immediately
+            soundFontPlayer.queueWaveTable(audioContext, audioContext.destination, window[SOUNDFONT_NAME], 0, midiNote, 2);
+            
+            // Set up interval to play continuously
+            shrutiBoxInterval = setInterval(function() {
+                if (isPlaying && soundFontLoaded) {
+                    var currentMidiNote = frequencyToMIDI(saFrequency);
+                    soundFontPlayer.queueWaveTable(audioContext, audioContext.destination, window[SOUNDFONT_NAME], 0, currentMidiNote, 2);
+                }
+            }, 1800); // Play every 1.8 seconds (2 second duration with slight overlap)
+            
+            isPlaying = true;
+            isLiveInput = false;
+            
+            // Also create oscillator for pitch detection (silent, just for analysis)
+            startOscillatorFallback(); // Use oscillator for pitch detection only
+        }).catch(err => {
+            console.error("Error with soundfont, using oscillator fallback:", err);
+            startOscillatorFallback();
+        });
+    } else {
+        // Fallback to oscillator
+        startOscillatorFallback();
+    }
+}
+
+function startOscillatorFallback() {
     try {
+        sourceNode = audioContext.createOscillator();
+        
+        // Set frequency to Sa frequency
+        sourceNode.frequency.value = saFrequency;
+        sourceNode.type = 'sine'; // Use sine wave for cleaner tone
+
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        sourceNode.connect( analyser );
+        // Only connect to analyser for pitch detection, not to destination if using soundfont
+        if (!soundFontLoaded) {
+            sourceNode.connect( audioContext.destination );
+        }
+        
         sourceNode.start(0);
         isPlaying = true;
         isLiveInput = false;
         updatePitch();
+        
+        console.log("Shruti Box started (oscillator) at", saFrequency, "Hz");
     } catch(e) {
         console.error("Error starting oscillator:", e);
-        sourceNode = null;
+        if (sourceNode) {
+            try {
+                sourceNode.disconnect();
+            } catch(e2) {}
+            sourceNode = null;
+        }
         analyser = null;
-        alert("Error starting Shruti Box. Please try again.");
+        isPlaying = false;
+        alert("Error starting Shruti Box: " + e.message);
     }
-
-    return "stop";
 }
 
 
