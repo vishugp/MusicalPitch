@@ -241,23 +241,28 @@ function stopCalibrateSa() {
 			var sum = filtered.reduce(function(a, b) { return a + b; }, 0);
 			var avgFreq = sum / filtered.length;
 			
-			// Update Sa frequency
-			saFrequency = Math.round(avgFreq * 10) / 10; // Round to 1 decimal place
+			// Find nearest standard note frequency
+			var nearestNote = noteFromPitch(avgFreq);
+			var exactFreq = frequencyFromNoteNumber(nearestNote);
+			var noteName = noteStrings[nearestNote % 12];
+			var octave = Math.floor(nearestNote / 12) - 1; // MIDI note 60 = C4, so subtract 1 to get octave number
+			
+			// Update Sa frequency to the exact standard note frequency
+			saFrequency = Math.round(exactFreq * 100) / 100; // Round to 2 decimal places for precision
 			
 			// Update input field
 			if (saFreqInput) {
 				saFreqInput.value = saFrequency;
 			}
 			
-			// Show success message
+			// Show success message with Sa Shruti
 			if (calibrationStatusElem) {
-				calibrationStatusElem.innerText = "Calibration complete! Sa = " + saFrequency + " Hz";
+				var centsOff = Math.round(1200 * Math.log(avgFreq / exactFreq) / Math.log(2));
+				var centsText = centsOff !== 0 ? " (detected " + (centsOff > 0 ? "+" : "") + centsOff + " cents off)" : "";
+				calibrationStatusElem.innerText = "✓ Calibration complete! Sa Shruti: " + noteName + octave + " (" + saFrequency + " Hz)" + centsText;
 				calibrationStatusElem.style.color = "rgb(32, 32, 142)";
-				setTimeout(function() {
-					if (calibrationStatusElem) {
-						calibrationStatusElem.style.display = "none";
-					}
-				}, 3000);
+				calibrationStatusElem.style.display = "block";
+				// Message stays visible - no timeout to hide it
 			}
 		} else {
 			if (calibrationStatusElem) {
