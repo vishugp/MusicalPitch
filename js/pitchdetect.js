@@ -63,6 +63,14 @@ var frequencyHistory = [];
 var maxHistoryLength = 300; // Store last 300 samples (~5 seconds at 60fps)
 var graphTimeWindow = 10; // Show last 10 seconds
 
+// Note tracking for raga analysis
+var noteTimeTracking = {}; // Dictionary: noteName -> time in milliseconds
+var lastNoteTime = null; // Timestamp of last note detection
+var lastDetectedNote = null; // Last detected note name
+var noteTrackingStartTime = null; // When note tracking started
+var minAnalysisTime = 5000; // Minimum 5 seconds before showing analysis
+var noteAnalysisElem = null; // UI element for displaying note analysis
+
 window.onload = function() {
 	audioContext = new AudioContext();
 	if (audioContext.state === 'suspended') audioContext.resume();
@@ -95,6 +103,7 @@ window.onload = function() {
 	calibrateButton = document.getElementById( "calibrate_sa_button" );
 	calibrationStatusElem = document.getElementById( "calibration_status" );
 	frequencyGraphCanvas = document.getElementById( "frequency_graph" );
+	noteAnalysisElem = document.getElementById( "note_analysis" );
 	if (frequencyGraphCanvas) {
 		frequencyGraphCtx = frequencyGraphCanvas.getContext("2d");
 		// Set canvas size to match display size
@@ -190,6 +199,7 @@ function startPitchDetect() {
 	    analyser = audioContext.createAnalyser();
 	    analyser.fftSize = 2048;
 	    mediaStreamSource.connect( analyser );
+	    startNoteTracking(); // Start tracking notes when microphone starts
 	    updatePitch();
     }).catch((err) => {
         // always check for errors at the end.
@@ -264,6 +274,9 @@ function stopCalibrateSa() {
 				calibrationStatusElem.style.display = "block";
 				// Message stays visible - no timeout to hide it
 			}
+			
+			// Reset note tracking when calibration is done
+			startNoteTracking();
 		} else {
 			if (calibrationStatusElem) {
 				calibrationStatusElem.innerText = "Calibration failed: No stable pitch detected. Please try again.";
@@ -531,6 +544,7 @@ function togglePlayback() {
     sourceNode.start( 0 );
     isPlaying = true;
     isLiveInput = false;
+    startNoteTracking(); // Start tracking notes when audio playback starts
     
 	var playBtn = document.getElementById('play_audio_btn');
 	if (playBtn) {
@@ -648,6 +662,169 @@ function getColorForSemitone(semitones) {
 
 // Sa frequency (default to 240 Hz, common for Carnatic music)
 var saFrequency = 130.81;
+
+// Extract base note name from variant (e.g., "R1" -> "R", "G2" -> "G", "S" -> "S")
+function getBaseNoteName(noteName) {
+	if (!noteName) return null;
+	// Handle combined notes like "R2/G1"
+	var parts = noteName.split("/");
+	var firstPart = parts[0];
+	// Extract base letter (S, R, G, M, P, D, N, or Ṡ)
+	var match = firstPart.match(/^([SRGMPDNṠ])/);
+	return match ? match[1] : null;
+}
+
+// Start note tracking (called when audio input starts)
+function startNoteTracking() {
+	noteTimeTracking = {};
+	lastNoteTime = null;
+	lastDetectedNote = null;
+	noteTrackingStartTime = Date.now();
+}
+
+// Track time spent in a note
+function trackNoteTime(noteName) {
+	if (!noteName || noteName === "--") return;
+	
+	var currentTime = Date.now();
+	
+	// If we have a previous note, add its time to tracking
+	if (lastDetectedNote && lastNoteTime) {
+		var timeSpent = currentTime - lastNoteTime;
+		if (!noteTimeTracking[lastDetectedNote]) {
+			noteTimeTracking[lastDetectedNote] = 0;
+		}
+		noteTimeTracking[lastDetectedNote] += timeSpent;
+	}
+	
+	// Update current note
+	lastDetectedNote = noteName;
+	lastNoteTime = currentTime;
+}
+
+// Analyze and determine most used variant for each base note
+function analyzeRagaNotes() {
+	if (!noteTrackingStartTime) return null;
+	
+	var totalTime = Date.now() - noteTrackingStartTime;
+	if (totalTime < minAnalysisTime) return null; // Not enough data yet
+	
+	// Group notes by base name
+	var baseNoteGroups = {
+		"S": [],
+		"R": [],
+		"G": [],
+		"M": [],
+		"P": [],
+		"D": [],
+		"N": []
+	};
+	
+	// Collect all variants for each base note
+	for (var noteName in noteTimeTracking) {
+		var baseNote = getBaseNoteName(noteName);
+		if (baseNote && baseNoteGroups[baseNote]) {
+			baseNoteGroups[baseNote].push({
+				name: noteName,
+				time: noteTimeTracking[noteName]
+			});
+		}
+	}
+	
+	// Find most used variant for each base note and calculate total time per group
+	var result = {};
+	var baseNoteTotals = {}; // Total time spent on each base note group
+	
+	for (var baseNote in baseNoteGroups) {
+		var variants = baseNoteGroups[baseNote];
+		if (variants.length > 0) {
+			// Calculate total time for this base note group
+			var groupTotal = 0;
+			for (var j = 0; j < variants.length; j++) {
+				groupTotal += variants[j].time;
+			}
+			baseNoteTotals[baseNote] = groupTotal;
+			
+			// Sort by time spent (descending)
+			variants.sort(function(a, b) { return b.time - a.time; });
+			result[baseNote] = {
+				variant: variants[0].name, // Most used variant
+				totalGroupTime: groupTotal
+			};
+		}
+	}
+	
+	return { variants: result, groupTotals: baseNoteTotals };
+}
+
+// Display raga analysis results
+function displayRagaAnalysis() {
+	if (!noteAnalysisElem) return;
+	
+	var analysisResult = analyzeRagaNotes();
+	var totalTime = noteTrackingStartTime ? Date.now() - noteTrackingStartTime : 0;
+	
+	if (!analysisResult || !analysisResult.variants || Object.keys(analysisResult.variants).length === 0) {
+		if (totalTime < minAnalysisTime) {
+			var remaining = Math.ceil((minAnalysisTime - totalTime) / 1000);
+			noteAnalysisElem.innerHTML = '<p class="analysis-placeholder">Analyzing... (' + remaining + 's remaining)</p>';
+		} else {
+			noteAnalysisElem.innerHTML = '<p class="analysis-placeholder">No notes detected yet. Start singing to analyze...</p>';
+		}
+		return;
+	}
+	
+	var analysis = analysisResult.variants;
+	var groupTotals = analysisResult.groupTotals;
+	
+	// Display the 7 notes with their detected variants (horizontally)
+	var html = '<div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; align-items: stretch;">';
+	
+	var sargamNotes = ["S", "R", "G", "M", "P", "D", "N"];
+	var noteLabels = {
+		"S": "Sa",
+		"R": "Ri",
+		"G": "Ga",
+		"M": "Ma",
+		"P": "Pa",
+		"D": "Dha",
+		"N": "Ni"
+	};
+	
+	for (var i = 0; i < sargamNotes.length; i++) {
+		var baseNote = sargamNotes[i];
+		var analysisData = analysis[baseNote];
+		var detectedVariant = analysisData ? analysisData.variant : null;
+		
+		// Get color for variant (handle combined notes like "R2/G1" by using first part)
+		var variantColor = "#e0e0e0";
+		if (detectedVariant) {
+			var variantParts = detectedVariant.split("/");
+			variantColor = carnaticNoteColors[variantParts[0]] || "#333";
+		}
+		
+		html += '<div class="note-card" style="border-color: ' + (detectedVariant ? variantColor : "#e0e0e0") + ';">';
+		html += '<div class="note-label">' + noteLabels[baseNote] + '</div>';
+		if (detectedVariant) {
+			html += '<div class="note-variant" style="color: ' + variantColor + ';">' + detectedVariant + '</div>';
+			var timeSpent = noteTimeTracking[detectedVariant] || 0;
+			var groupTotal = groupTotals[baseNote] || 0;
+			// Calculate percentage relative to equivalent notes (e.g., G2% among G1, G2, G3)
+			var percentage = groupTotal > 0 ? Math.round((timeSpent / groupTotal) * 100) : 0;
+			html += '<div class="note-percentage">' + percentage + '%</div>';
+		} else {
+			html += '<div style="font-size: 1.3em; color: #999; margin: 8px 0;">--</div>';
+		}
+		html += '</div>';
+	}
+	
+	html += '</div>';
+	html += '<div class="analysis-footer">';
+	html += 'Analysis based on ' + Math.round(totalTime / 1000) + ' seconds of audio';
+	html += '</div>';
+	
+	noteAnalysisElem.innerHTML = html;
+}
 
 function noteFromPitch( frequency ) {
 	var noteNum = 12 * (Math.log( frequency / 440 )/Math.log(2) );
@@ -1061,6 +1238,16 @@ function updatePitch( time ) {
 		if (indianNoteElem) {
 			indianNoteElem.innerText = "--";
 		}
+		// Stop tracking current note when signal is lost
+		if (lastDetectedNote && lastNoteTime) {
+			var currentTime = Date.now();
+			var timeSpent = currentTime - lastNoteTime;
+			if (!noteTimeTracking[lastDetectedNote]) {
+				noteTimeTracking[lastDetectedNote] = 0;
+			}
+			noteTimeTracking[lastDetectedNote] += timeSpent;
+			lastNoteTime = currentTime;
+		}
 		// Add -1 to history to indicate no signal
 		frequencyHistory.push(-1);
  	} else {
@@ -1093,6 +1280,11 @@ function updatePitch( time ) {
 					noteDisplay = noteDisplay + " (+" + indianNote.octave + ")";
 				}
 				indianNoteElem.innerText = noteDisplay;
+				
+				// Track note time (only for middle octave to avoid confusion)
+				if (indianNote.octave === 0) {
+					trackNoteTime(indianNote.note);
+				}
 			} else {
 				indianNoteElem.innerText = "--";
 			}
@@ -1113,6 +1305,12 @@ function updatePitch( time ) {
 	
 	// Draw frequency graph
 	drawFrequencyGraph();
+	
+	// Update raga analysis display (throttle to every 500ms to avoid too frequent updates)
+	if (!window.lastAnalysisUpdate || Date.now() - window.lastAnalysisUpdate > 500) {
+		displayRagaAnalysis();
+		window.lastAnalysisUpdate = Date.now();
+	}
 
 	if (!window.requestAnimationFrame)
 		window.requestAnimationFrame = window.webkitRequestAnimationFrame;

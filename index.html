@@ -60,6 +60,77 @@
 				grid-column: 1 / -1;
 			}
 			
+			.raga-analysis-card {
+				grid-column: 1 / -1;
+				background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
+				border: 2px solid rgba(32, 32, 142, 0.1);
+			}
+			
+			.note-analysis-container {
+				padding: 20px;
+				min-height: 180px;
+				background: rgba(255, 255, 255, 0.6);
+				border-radius: 12px;
+				margin-top: 10px;
+			}
+			
+			.analysis-placeholder {
+				color: #666;
+				font-style: italic;
+				text-align: center;
+				padding: 40px 20px;
+				font-size: 1.05em;
+			}
+			
+			.note-card {
+				text-align: center;
+				padding: 18px 20px;
+				background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+				border-radius: 12px;
+				border: 2px solid;
+				min-width: 100px;
+				flex: 0 0 auto;
+				transition: all 0.3s ease;
+				box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+			}
+			
+			.note-card:hover {
+				transform: translateY(-3px);
+				box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+			}
+			
+			.note-label {
+				font-size: 0.95em;
+				font-weight: 600;
+				color: #333;
+				margin-bottom: 8px;
+				letter-spacing: 0.5px;
+			}
+			
+			.note-variant {
+				font-size: 1.6em;
+				font-weight: 700;
+				margin: 8px 0;
+			}
+			
+			.note-percentage {
+				font-size: 0.8em;
+				color: #666;
+				margin-top: 6px;
+				font-weight: 500;
+			}
+			
+			.analysis-footer {
+				margin-top: 20px;
+				padding: 12px 16px;
+				background: linear-gradient(135deg, #e8f4f8 0%, #d6e9f5 100%);
+				border-radius: 8px;
+				font-size: 0.9em;
+				color: #555;
+				text-align: center;
+				border: 1px solid rgba(32, 32, 142, 0.1);
+			}
+			
 			.card h2 {
 				font-size: 1.3em;
 				font-weight: 600;
@@ -227,6 +298,10 @@
 					grid-template-columns: 1fr;
 				}
 				
+				.controls-card > div {
+					grid-template-columns: 1fr !important;
+				}
+				
 				#note {
 					font-size: 80px;
 				}
@@ -260,6 +335,13 @@
 						<input type="number" id="sa_frequency" min="100" max="500" step="0.1" value="240">
 						<button id="calibrate_sa_button" class="btn-primary" style="padding: 8px 20px;">🎯 Calibrate Sa</button>
 						<div id="calibration_status" style="display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-weight: 500;"></div>
+					</div>
+				</div>
+				
+				<div class="card raga-analysis-card">
+					<h2>🎼 Raga Analysis - Sargam Notes</h2>
+					<div id="note_analysis" class="note-analysis-container">
+						<p class="analysis-placeholder">Start singing to analyze which note variants are being used...</p>
 					</div>
 				</div>
 				
