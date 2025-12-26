@@ -767,9 +767,9 @@ function displayRagaAnalysis() {
 	if (!analysisResult || !analysisResult.variants || Object.keys(analysisResult.variants).length === 0) {
 		if (totalTime < minAnalysisTime) {
 			var remaining = Math.ceil((minAnalysisTime - totalTime) / 1000);
-			noteAnalysisElem.innerHTML = '<p class="analysis-placeholder">Analyzing... (' + remaining + 's remaining)</p>';
+			noteAnalysisElem.innerHTML = '<p style="color: #666; font-style: italic;">Analyzing... (' + remaining + 's remaining)</p>';
 		} else {
-			noteAnalysisElem.innerHTML = '<p class="analysis-placeholder">No notes detected yet. Start singing to analyze...</p>';
+			noteAnalysisElem.innerHTML = '<p style="color: #666; font-style: italic;">No notes detected yet. Start singing to analyze...</p>';
 		}
 		return;
 	}
@@ -778,7 +778,7 @@ function displayRagaAnalysis() {
 	var groupTotals = analysisResult.groupTotals;
 	
 	// Display the 7 notes with their detected variants (horizontally)
-	var html = '<div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; align-items: stretch;">';
+	var html = '<div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; justify-content: center;">';
 	
 	var sargamNotes = ["S", "R", "G", "M", "P", "D", "N"];
 	var noteLabels = {
@@ -797,29 +797,29 @@ function displayRagaAnalysis() {
 		var detectedVariant = analysisData ? analysisData.variant : null;
 		
 		// Get color for variant (handle combined notes like "R2/G1" by using first part)
-		var variantColor = "#e0e0e0";
+		var variantColor = "#ccc";
 		if (detectedVariant) {
 			var variantParts = detectedVariant.split("/");
 			variantColor = carnaticNoteColors[variantParts[0]] || "#333";
 		}
 		
-		html += '<div class="note-card" style="border-color: ' + (detectedVariant ? variantColor : "#e0e0e0") + ';">';
-		html += '<div class="note-label">' + noteLabels[baseNote] + '</div>';
+		html += '<div style="text-align: center; padding: 12px 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid ' + (detectedVariant ? variantColor : "#e0e0e0") + '; min-width: 90px; flex: 0 0 auto;">';
+		html += '<div style="font-size: 0.95em; font-weight: 600; color: #333; margin-bottom: 5px;">' + noteLabels[baseNote] + '</div>';
 		if (detectedVariant) {
-			html += '<div class="note-variant" style="color: ' + variantColor + ';">' + detectedVariant + '</div>';
+			html += '<div style="font-size: 1.4em; font-weight: 700; color: ' + variantColor + ';">' + detectedVariant + '</div>';
 			var timeSpent = noteTimeTracking[detectedVariant] || 0;
 			var groupTotal = groupTotals[baseNote] || 0;
 			// Calculate percentage relative to equivalent notes (e.g., G2% among G1, G2, G3)
 			var percentage = groupTotal > 0 ? Math.round((timeSpent / groupTotal) * 100) : 0;
-			html += '<div class="note-percentage">' + percentage + '%</div>';
+			html += '<div style="font-size: 0.75em; color: #666; margin-top: 4px;">' + percentage + '%</div>';
 		} else {
-			html += '<div style="font-size: 1.3em; color: #999; margin: 8px 0;">--</div>';
+			html += '<div style="font-size: 1.2em; color: #999;">--</div>';
 		}
 		html += '</div>';
 	}
 	
 	html += '</div>';
-	html += '<div class="analysis-footer">';
+	html += '<div style="margin-top: 15px; padding: 10px; background: #e8f4f8; border-radius: 6px; font-size: 0.9em; color: #555;">';
 	html += 'Analysis based on ' + Math.round(totalTime / 1000) + ' seconds of audio';
 	html += '</div>';
 	
